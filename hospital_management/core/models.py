@@ -8,6 +8,22 @@ class User(AbstractUser):
         ('ADMIN', 'Admin'),
     ]
     role = models.CharField(max_length=10, choices=ROLE_CHOICES, default='PATIENT')
+    
+    # Resolve conflicts by adding custom related_names
+    groups = models.ManyToManyField(
+        'auth.Group',
+        verbose_name='groups',
+        blank=True,
+        related_name='custom_user_set',
+        related_query_name='custom_user'
+    )
+    user_permissions = models.ManyToManyField(
+        'auth.Permission',
+        verbose_name='user permissions',
+        blank=True,
+        related_name='custom_user_set',
+        related_query_name='custom_user'
+    )
 
 class Patient(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='patient')
