@@ -18,7 +18,7 @@ Including another URLconf
 from django.contrib import admin
 from django.urls import path, include
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView, TokenBlacklistView
-from hospital_management.core.views import VerifyEmail, LoginView
+from core.views import VerifyEmail, LoginView
 
 urlpatterns = [
     path("admin/", admin.site.urls),
