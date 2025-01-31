@@ -1,6 +1,7 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from .views import PatientViewSet, DoctorViewSet, AppointmentViewSet, MedicalRecordViewSet
+from .views import VerifyEmail
 
 router = DefaultRouter()
 router.register(r'patients', PatientViewSet)
