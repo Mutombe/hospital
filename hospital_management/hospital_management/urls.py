@@ -18,7 +18,7 @@ Including another URLconf
 from django.contrib import admin
 from django.urls import path, include
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView, TokenBlacklistView
-from core.views import VerifyEmail, LoginView
+from core.views import VerifyEmailView, LoginView, RegisterView
 
 urlpatterns = [
     path("admin/", admin.site.urls),
@@ -27,6 +27,8 @@ urlpatterns = [
     path('api/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
     path('api/token/blacklist/', TokenBlacklistView.as_view(), name='token_blacklist'),
     path('api/login/', LoginView.as_view(), name='login'),
-    path('api/verify-email/', VerifyEmail.as_view(), name='verify_email'),
-    path('api/verify-email/<uidb64>/<token>/', VerifyEmail.as_view(), name='verify_email_confirm'),
+    path('api/verify-email/', VerifyEmailView.as_view(), name='verify_email'),
+    path('api/register/', RegisterView.as_view(), name='register'),
+    path('api/verify-email/<uidb64>/<token>/', VerifyEmailView.as_view(), name='verify_email'),
+    path('api/verify-email/<uidb64>/<token>/', VerifyEmailView.as_view(), name='verify_email_confirm'),
 ]

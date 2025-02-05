@@ -124,6 +124,14 @@ TEMPLATES = [
     },
 ]
 
+# settings.py
+
+# Email Configuration (Development)
+EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
+EMAIL_HOST = 'localhost'
+EMAIL_PORT = 25
+DEFAULT_FROM_EMAIL = 'noreply@hospital.com'
+
 WSGI_APPLICATION = "hospital_management.wsgi.application"
 
 
