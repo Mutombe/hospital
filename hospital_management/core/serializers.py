@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import User, Patient, Doctor, Appointment, MedicalRecord
+from .models import User, Patient, Doctor, Appointment, MedicalRecord, VitalSigns, Diagnosis, Medication
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 
 from django.contrib.auth.hashers import make_password
@@ -26,7 +26,8 @@ class PatientSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Patient
-        fields = ['id', 'user', 'phone', 'address', 'medical_history']
+        fields = '__all__'
+        read_only_fields = ('created_at', 'updated_at')
 
 class DoctorSerializer(serializers.ModelSerializer):
     user = UserSerializer()
@@ -44,3 +45,18 @@ class MedicalRecordSerializer(serializers.ModelSerializer):
     class Meta:
         model = MedicalRecord
         fields = ['id', 'patient', 'doctor', 'diagnosis', 'prescription', 'notes', 'date']
+
+class VitalSignsSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = VitalSigns
+        fields = '__all__'
+
+class DiagnosisSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Diagnosis
+        fields = '__all__'
+
+class MedicationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Medication
+        fields = '__all__'

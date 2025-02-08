@@ -1,6 +1,6 @@
 from rest_framework import viewsets, status
-from .models import Patient, Doctor, Appointment, MedicalRecord, User
-from .serializers import PatientSerializer, DoctorSerializer, AppointmentSerializer, MedicalRecordSerializer, UserSerializer, CustomTokenObtainPairSerializer
+from .models import Patient, Doctor, Appointment, MedicalRecord, User, Diagnosis, VitalSigns, Medication
+from .serializers import PatientSerializer, DoctorSerializer, AppointmentSerializer, MedicalRecordSerializer, UserSerializer, CustomTokenObtainPairSerializer, MedicationSerializer, DiagnosisSerializer, VitalSignsSerializer
 from django.template.loader import render_to_string
 from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
 from django.utils.encoding import force_bytes, force_str
@@ -11,7 +11,10 @@ from rest_framework.response import Response
 from rest_framework import status
 from django.core.mail import send_mail
 from .serializers import UserSerializer
-
+from rest_framework import viewsets
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.decorators import action
+from django_filters import rest_framework as filters
 class CustomTokenObtainPairView(TokenObtainPairView):
     serializer_class = CustomTokenObtainPairSerializer
 
@@ -21,6 +24,43 @@ class LoginView(TokenObtainPairView):
 class PatientViewSet(viewsets.ModelViewSet):
     queryset = Patient.objects.all()
     serializer_class = PatientSerializer
+    permission_classes = [IsAuthenticated]
+    filter_backends = (filters.DjangoFilterBackend,)
+    filterset_fields = ('mrn', 'gender', 'blood_type')
+
+    @action(detail=True, methods=['get'])
+    def medical_history(self, request, pk=None):
+        patient = self.get_object()
+        vitals = VitalSigns.objects.filter(patient=patient)
+        diagnoses = Diagnosis.objects.filter(patient=patient)
+        medications = Medication.objects.filter(patient=patient)
+
+        return Response({
+            'vitals': VitalSignsSerializer(vitals, many=True).data,
+            'diagnoses': DiagnosisSerializer(diagnoses, many=True).data,
+            'medications': MedicationSerializer(medications, many=True).data
+        })
+    
+class VitalSignsViewSet(viewsets.ModelViewSet):
+    queryset = VitalSigns.objects.all()
+    serializer_class = VitalSignsSerializer
+    permission_classes = [IsAuthenticated]
+    filter_backends = (filters.DjangoFilterBackend,)
+    filterset_fields = ('patient', 'recorded_at')
+
+class DiagnosisViewSet(viewsets.ModelViewSet):
+    queryset = Diagnosis.objects.all()
+    serializer_class = DiagnosisSerializer
+    permission_classes = [IsAuthenticated]
+    filter_backends = (filters.DjangoFilterBackend,)
+    filterset_fields = ('patient', 'icd_code', 'status')
+
+class MedicationViewSet(viewsets.ModelViewSet):
+    queryset = Medication.objects.all()
+    serializer_class = MedicationSerializer
+    permission_classes = [IsAuthenticated]
+    filter_backends = (filters.DjangoFilterBackend,)
+    filterset_fields = ('patient', 'active')
 
 class DoctorViewSet(viewsets.ModelViewSet):
     queryset = Doctor.objects.all()
