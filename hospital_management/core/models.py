@@ -126,11 +126,11 @@ class Specialty(models.Model):
 class Doctor(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='doctor')
     specialty = models.ForeignKey(Specialty, on_delete=models.SET_NULL, null=True)
-    license_number = models.CharField(max_length=50, unique=True)
-    qualification = models.CharField(max_length=200)
+    license_number = models.CharField(max_length=50, unique=True, default="Private")
+    qualification = models.CharField(max_length=200, default="Private")
     experience_years = models.IntegerField(default=0)
-    bio = models.TextField(blank=True)
-    consultation_fee = models.DecimalField(max_digits=10, decimal_places=2)
+    bio = models.TextField(blank=True, null=True)
+    consultation_fee = models.DecimalField(max_digits=10, decimal_places=2, default=0.0)
     available_for_appointments = models.BooleanField(default=True)
     max_patients_per_day = models.IntegerField(default=20)
     
@@ -181,7 +181,7 @@ class DoctorLeave(models.Model):
     doctor = models.ForeignKey(Doctor, on_delete=models.CASCADE)
     start_date = models.DateField()
     end_date = models.DateField()
-    reason = models.TextField()
+    reason = models.TextField(default="Emergency")
     status = models.CharField(
         max_length=20,
         choices=[
@@ -206,10 +206,10 @@ class Appointment(models.Model):
     appointment_date = models.DateField()
     appointment_time = models.TimeField()
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='PENDING')
-    reason = models.TextField()
+    reason = models.TextField(default="General Checkup")
     notes = models.TextField(blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(default=timezone.now)
     
     class Meta:
         ordering = ['appointment_date', 'appointment_time']
