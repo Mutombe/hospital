@@ -89,22 +89,136 @@ class Medication(models.Model):
     prescribed_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True)
     active = models.BooleanField(default=True)
 
+
+class AuditLog(models.Model):
+    ACTION_CHOICES = [
+        ('CREATE', 'Create'),
+        ('READ', 'Read'),
+        ('UPDATE', 'Update'),
+        ('DELETE', 'Delete'),
+    ]
+    
+    user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True)
+    action = models.CharField(max_length=10, choices=ACTION_CHOICES)
+    resource = models.CharField(max_length=255)  # The affected resource/endpoint
+    details = models.TextField(null=True, blank=True)  # Additional details about the action
+    ip_address = models.GenericIPAddressField(null=True)
+    timestamp = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        ordering = ['-timestamp']
+
+class PatientHistory(models.Model):
+    patient = models.ForeignKey(Patient, on_delete=models.CASCADE)
+    changed_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True)
+    change_date = models.DateTimeField(auto_now_add=True)
+    field_name = models.CharField(max_length=100)
+    old_value = models.TextField(null=True)
+    new_value = models.TextField(null=True)
+    
+    class Meta:
+        ordering = ['-change_date']
+
+class Specialty(models.Model):
+    name = models.CharField(max_length=100)
+    description = models.TextField(blank=True)
+
 class Doctor(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='doctor')
-    specialty = models.CharField(max_length=100)
-    bio = models.TextField(blank=True, null=True)
+    specialty = models.ForeignKey(Specialty, on_delete=models.SET_NULL, null=True)
+    license_number = models.CharField(max_length=50, unique=True)
+    qualification = models.CharField(max_length=200)
+    experience_years = models.IntegerField(default=0)
+    bio = models.TextField(blank=True)
+    consultation_fee = models.DecimalField(max_digits=10, decimal_places=2)
+    available_for_appointments = models.BooleanField(default=True)
+    max_patients_per_day = models.IntegerField(default=20)
+    
+    def is_available(self, date, time):
+        # Check if doctor is on leave
+        leave_exists = DoctorLeave.objects.filter(
+            doctor=self,
+            start_date__lte=date,
+            end_date__gte=date,
+            status='APPROVED'
+        ).exists()
+        
+        if leave_exists:
+            return False
+            
+        # Check schedule
+        day_of_week = date.weekday()
+        schedule = DoctorSchedule.objects.filter(
+            doctor=self,
+            day_of_week=day_of_week,
+            start_time__lte=time,
+            end_time__gte=time,
+            is_available=True
+        ).exists()
+        
+        if not schedule:
+            return False
+            
+        # Check number of appointments for that day
+        appointments_count = Appointment.objects.filter(
+            doctor=self,
+            date=date,
+            status='PENDING'
+        ).count()
+        
+        return appointments_count < self.max_patients_per_day
+
+class DoctorSchedule(models.Model):
+    doctor = models.ForeignKey(Doctor, on_delete=models.CASCADE)
+    day_of_week = models.IntegerField(
+        validators=[MinValueValidator(0), MaxValueValidator(6)]
+    )
+    start_time = models.TimeField()
+    end_time = models.TimeField()
+    is_available = models.BooleanField(default=True)
+
+class DoctorLeave(models.Model):
+    doctor = models.ForeignKey(Doctor, on_delete=models.CASCADE)
+    start_date = models.DateField()
+    end_date = models.DateField()
+    reason = models.TextField()
+    status = models.CharField(
+        max_length=20,
+        choices=[
+            ('PENDING', 'Pending'),
+            ('APPROVED', 'Approved'),
+            ('REJECTED', 'Rejected')
+        ],
+        default='PENDING'
+    )
 
 class Appointment(models.Model):
     STATUS_CHOICES = [
         ('PENDING', 'Pending'),
+        ('CONFIRMED', 'Confirmed'),
         ('COMPLETED', 'Completed'),
-        ('CANCELED', 'Canceled'),
+        ('CANCELLED', 'Cancelled'),
+        ('NO_SHOW', 'No Show')
     ]
+    
     patient = models.ForeignKey(Patient, on_delete=models.CASCADE, related_name='appointments')
     doctor = models.ForeignKey(Doctor, on_delete=models.CASCADE, related_name='appointments')
-    date = models.DateField()
-    time = models.TimeField()
-    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='PENDING')
+    appointment_date = models.DateField()
+    appointment_time = models.TimeField()
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='PENDING')
+    reason = models.TextField()
+    notes = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        ordering = ['appointment_date', 'appointment_time']
+        
+    def save(self, *args, **kwargs):
+        if not self.pk:  # New appointment
+            if not self.doctor.is_available(self.appointment_date, self.appointment_time):
+                raise ValueError("Doctor is not available at this time")
+        super().save(*args, **kwargs)
 
 class MedicalRecord(models.Model):
     patient = models.ForeignKey(Patient, on_delete=models.CASCADE, related_name='medical_records')

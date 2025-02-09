@@ -1,7 +1,6 @@
 from rest_framework import serializers
-from .models import User, Patient, Doctor, Appointment, MedicalRecord, VitalSigns, Diagnosis, Medication
+from .models import User, Patient, Doctor, Appointment, MedicalRecord, VitalSigns, Diagnosis, Medication, DoctorSchedule, DoctorLeave, Specialty
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
-
 from django.contrib.auth.hashers import make_password
 
 class UserSerializer(serializers.ModelSerializer):
@@ -29,18 +28,6 @@ class PatientSerializer(serializers.ModelSerializer):
         fields = '__all__'
         read_only_fields = ('created_at', 'updated_at')
 
-class DoctorSerializer(serializers.ModelSerializer):
-    user = UserSerializer()
-
-    class Meta:
-        model = Doctor
-        fields = ['id', 'user', 'specialty', 'bio']
-
-class AppointmentSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Appointment
-        fields = ['id', 'patient', 'doctor', 'date', 'time', 'status']
-
 class MedicalRecordSerializer(serializers.ModelSerializer):
     class Meta:
         model = MedicalRecord
@@ -60,3 +47,44 @@ class MedicationSerializer(serializers.ModelSerializer):
     class Meta:
         model = Medication
         fields = '__all__'
+
+
+class SpecialtySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Specialty
+        fields = '__all__'
+
+class DoctorScheduleSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = DoctorSchedule
+        fields = '__all__'
+
+class DoctorLeaveSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = DoctorLeave
+        fields = '__all__'
+
+class DoctorSerializer(serializers.ModelSerializer):
+    schedule = DoctorScheduleSerializer(many=True, read_only=True)
+    specialty = SpecialtySerializer(read_only=True)
+    
+    class Meta:
+        model = Doctor
+        fields = '__all__'
+        read_only_fields = ('user',)
+
+class AppointmentSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Appointment
+        fields = '__all__'
+        read_only_fields = ('status', 'created_at', 'updated_at')
+
+    def validate(self, data):
+        doctor = data['doctor']
+        appointment_date = data['appointment_date']
+        appointment_time = data['appointment_time']
+        
+        if not doctor.is_available(appointment_date, appointment_time):
+            raise serializers.ValidationError("Doctor is not available at this time")
+        
+        return data
