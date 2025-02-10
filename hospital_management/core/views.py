@@ -15,11 +15,43 @@ from rest_framework.decorators import action
 from django_filters import rest_framework as filters
 from .tasks import send_appointment_confirmation
 from datetime import datetime, timedelta
+from rest_framework_simplejwt.tokens import RefreshToken
+
 class CustomTokenObtainPairView(TokenObtainPairView):
     serializer_class = CustomTokenObtainPairSerializer
-
 class LoginView(TokenObtainPairView):
     serializer_class = CustomTokenObtainPairSerializer
+    
+    def post(self, request, *args, **kwargs):
+        response = super().post(request, *args, **kwargs)
+        
+        if response.status_code == 200:
+            user = User.objects.get(username=request.data['username'])
+            
+            # Add role-specific data to response
+            if user.role == 'PATIENT':
+                patient = Patient.objects.get(user=user)
+                response.data['patient_id'] = patient.id
+            elif user.role == 'DOCTOR':
+                doctor = Doctor.objects.get(user=user)
+                response.data['doctor_id'] = doctor.id
+                
+            response.data['role'] = user.role
+            response.data['user_id'] = user.id
+            
+        return response
+
+class LogoutView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        try:
+            refresh_token = request.data["refresh_token"]
+            token = RefreshToken(refresh_token)
+            token.blacklist()
+            return Response({"message": "Successfully logged out."}, status=status.HTTP_200_OK)
+        except Exception:
+            return Response({"message": "Invalid token."}, status=status.HTTP_400_BAD_REQUEST)
 
 class PatientViewSet(viewsets.ModelViewSet):
     queryset = Patient.objects.all()
@@ -133,28 +165,43 @@ class AppointmentViewSet(viewsets.ModelViewSet):
 class MedicalRecordViewSet(viewsets.ModelViewSet):
     queryset = MedicalRecord.objects.all()
     serializer_class = MedicalRecordSerializer
-
-
 class RegisterView(APIView):
     def post(self, request):
-        serializer = UserSerializer(data=request.data)
-        if serializer.is_valid():
-            user = serializer.save()
-            # Generate token and uid
+        user_serializer = UserSerializer(data=request.data)
+        if user_serializer.is_valid():
+            user = user_serializer.save()
+            
+            # Create corresponding profile based on role
+            if user.role == 'PATIENT':
+                Patient.objects.create(
+                    user=user,
+                    # Add other required fields from request.data
+                )
+            elif user.role == 'DOCTOR':
+                Doctor.objects.create(
+                    user=user,
+                    # Add other required fields from request.data
+                )
+                
+            # Generate verification token and send email
             token = default_token_generator.make_token(user)
             uid = urlsafe_base64_encode(force_bytes(user.pk))
-            # Create verification link
             verification_link = f'http://localhost:8000/api/verify-email/{uid}/{token}/'
-            # Render email template
+            
             subject = 'Verify Your Email'
             message = render_to_string('verify_email.html', {
                 'user': user,
                 'verification_link': verification_link,
             })
-            # Send email
             send_mail(subject, message, 'noreply@hospital.com', [user.email])
-            return Response({'message': 'User registered successfully. Please check your email to verify your account.'}, status=status.HTTP_201_CREATED)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            
+            return Response({
+                'message': 'Registration successful. Please verify your email.',
+                'user_id': user.id,
+                'role': user.role
+            }, status=status.HTTP_201_CREATED)
+            
+        return Response(user_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 class VerifyEmailView(APIView):
     def get(self, request, uidb64, token):
