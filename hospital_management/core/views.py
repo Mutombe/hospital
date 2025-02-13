@@ -52,6 +52,60 @@ class LogoutView(APIView):
             return Response({"message": "Successfully logged out."}, status=status.HTTP_200_OK)
         except Exception:
             return Response({"message": "Invalid token."}, status=status.HTTP_400_BAD_REQUEST)
+        
+class RegisterView(APIView):
+    def post(self, request):
+        user_serializer = UserSerializer(data=request.data)
+        if user_serializer.is_valid():
+            user = user_serializer.save()
+            
+            # Create corresponding profile based on role
+            if user.role == 'PATIENT':
+                Patient.objects.create(
+                    user=user,
+                    # Add other required fields from request.data
+                )
+            elif user.role == 'DOCTOR':
+                Doctor.objects.create(
+                    user=user,
+                    # Add other required fields from request.data
+                )
+                
+            # Generate verification token and send email
+            token = default_token_generator.make_token(user)
+            uid = urlsafe_base64_encode(force_bytes(user.pk))
+            verification_link = f'http://localhost:8000/api/verify-email/{uid}/{token}/'
+            
+            subject = 'Verify Your Email'
+            message = render_to_string('verify_email.html', {
+                'user': user,
+                'verification_link': verification_link,
+            })
+            send_mail(subject, message, 'noreply@hospital.com', [user.email])
+            
+            return Response({
+                'message': 'Registration successful. Please verify your email.',
+                'user_id': user.id,
+                'role': user.role
+            }, status=status.HTTP_201_CREATED)
+            
+        return Response(user_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+class VerifyEmailView(APIView):
+    def get(self, request, uidb64, token):
+        try:
+            # Decode uid
+            uid = force_str(urlsafe_base64_decode(uidb64))
+            user = User.objects.get(pk=uid)
+            # Validate token
+            if default_token_generator.check_token(user, token):
+                user.is_active = True
+                user.save()
+                return Response({'message': 'Email verified successfully.'}, status=status.HTTP_200_OK)
+            else:
+                return Response({'message': 'Invalid token.'}, status=status.HTTP_400_BAD_REQUEST)
+        except (TypeError, ValueError, OverflowError, User.DoesNotExist):
+            return Response({'message': 'Invalid user.'}, status=status.HTTP_400_BAD_REQUEST)
 
 class PatientViewSet(viewsets.ModelViewSet):
     queryset = Patient.objects.all()
@@ -165,56 +219,3 @@ class AppointmentViewSet(viewsets.ModelViewSet):
 class MedicalRecordViewSet(viewsets.ModelViewSet):
     queryset = MedicalRecord.objects.all()
     serializer_class = MedicalRecordSerializer
-class RegisterView(APIView):
-    def post(self, request):
-        user_serializer = UserSerializer(data=request.data)
-        if user_serializer.is_valid():
-            user = user_serializer.save()
-            
-            # Create corresponding profile based on role
-            if user.role == 'PATIENT':
-                Patient.objects.create(
-                    user=user,
-                    # Add other required fields from request.data
-                )
-            elif user.role == 'DOCTOR':
-                Doctor.objects.create(
-                    user=user,
-                    # Add other required fields from request.data
-                )
-                
-            # Generate verification token and send email
-            token = default_token_generator.make_token(user)
-            uid = urlsafe_base64_encode(force_bytes(user.pk))
-            verification_link = f'http://localhost:8000/api/verify-email/{uid}/{token}/'
-            
-            subject = 'Verify Your Email'
-            message = render_to_string('verify_email.html', {
-                'user': user,
-                'verification_link': verification_link,
-            })
-            send_mail(subject, message, 'noreply@hospital.com', [user.email])
-            
-            return Response({
-                'message': 'Registration successful. Please verify your email.',
-                'user_id': user.id,
-                'role': user.role
-            }, status=status.HTTP_201_CREATED)
-            
-        return Response(user_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-class VerifyEmailView(APIView):
-    def get(self, request, uidb64, token):
-        try:
-            # Decode uid
-            uid = force_str(urlsafe_base64_decode(uidb64))
-            user = User.objects.get(pk=uid)
-            # Validate token
-            if default_token_generator.check_token(user, token):
-                user.is_active = True
-                user.save()
-                return Response({'message': 'Email verified successfully.'}, status=status.HTTP_200_OK)
-            else:
-                return Response({'message': 'Invalid token.'}, status=status.HTTP_400_BAD_REQUEST)
-        except (TypeError, ValueError, OverflowError, User.DoesNotExist):
-            return Response({'message': 'Invalid user.'}, status=status.HTTP_400_BAD_REQUEST)

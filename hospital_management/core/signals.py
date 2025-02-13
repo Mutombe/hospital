@@ -16,7 +16,7 @@ def create_patient_history(sender, instance, created, **kwargs):
             changes=instance.get_changes()
         )
 
-@receiver(post_save, sender=User)
-def create_auth_token(sender, instance=None, created=False, **kwargs):
-    if created:
-        Token.objects.create(user=instance)
+#@receiver(post_save, sender=User)
+#def create_auth_token(sender, instance=None, created=False, **kwargs):
+ #   if created:
+  #      Token.objects.create(user=instance)
