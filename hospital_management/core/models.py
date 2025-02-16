@@ -27,6 +27,12 @@ class User(AbstractUser):
         related_query_name='custom_user'
     )
 
+    token_relationships = models.ManyToManyField(
+        'token_blacklist.OutstandingToken',
+        related_name='user_tokens',
+        blank=True
+    )
+
 class Patient(models.Model):
     GENDER_CHOICES = [
         ('M', 'Male'),

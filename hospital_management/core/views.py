@@ -6,7 +6,6 @@ from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
 from django.utils.encoding import force_bytes, force_str
 from django.contrib.auth.tokens import default_token_generator
 from rest_framework.views import APIView
-from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework.response import Response
 from django.core.mail import send_mail
 from .serializers import UserSerializer
@@ -16,42 +15,61 @@ from django_filters import rest_framework as filters
 from .tasks import send_appointment_confirmation
 from datetime import datetime, timedelta
 from rest_framework_simplejwt.tokens import RefreshToken
-
+from rest_framework_simplejwt.views import TokenObtainPairView
+from django.contrib.auth import authenticate
+from rest_framework.exceptions import AuthenticationFailed
+from django.core.exceptions import ObjectDoesNotExist
 class CustomTokenObtainPairView(TokenObtainPairView):
     serializer_class = CustomTokenObtainPairSerializer
 class LoginView(TokenObtainPairView):
     serializer_class = CustomTokenObtainPairSerializer
-    
+
     def post(self, request, *args, **kwargs):
-        response = super().post(request, *args, **kwargs)
-        
-        if response.status_code == 200:
-            user = User.objects.get(username=request.data['username'])
+        try:
+            serializer = self.serializer_class(data=request.data)
+            if serializer.is_valid():
+                response_data = serializer.validated_data
+                return Response(response_data, status=status.HTTP_200_OK)
+            return Response(
+                serializer.errors, 
+                status=status.HTTP_401_UNAUTHORIZED
+            )
             
-            # Add role-specific data to response
-            if user.role == 'PATIENT':
-                patient = Patient.objects.get(user=user)
-                response.data['patient_id'] = patient.id
-            elif user.role == 'DOCTOR':
-                doctor = Doctor.objects.get(user=user)
-                response.data['doctor_id'] = doctor.id
-                
-            response.data['role'] = user.role
-            response.data['user_id'] = user.id
-            
-        return response
+        except AuthenticationFailed as e:
+            return Response(
+                {"detail": str(e)}, 
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+        except Exception as e:
+            return Response(
+                {"detail": "An error occurred during login"}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
 class LogoutView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
         try:
-            refresh_token = request.data["refresh_token"]
+            refresh_token = request.data.get("refresh")
+            if not refresh_token:
+                return Response(
+                    {"message": "Refresh token is required"}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+                
             token = RefreshToken(refresh_token)
             token.blacklist()
-            return Response({"message": "Successfully logged out."}, status=status.HTTP_200_OK)
-        except Exception:
-            return Response({"message": "Invalid token."}, status=status.HTTP_400_BAD_REQUEST)
+            
+            return Response(
+                {"message": "Successfully logged out."}, 
+                status=status.HTTP_200_OK
+            )
+        except Exception as e:
+            return Response(
+                {"message": str(e)}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
         
 class RegisterView(APIView):
     def post(self, request):
