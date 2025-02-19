@@ -19,6 +19,8 @@ from rest_framework_simplejwt.views import TokenObtainPairView
 from django.contrib.auth import authenticate
 from rest_framework.exceptions import AuthenticationFailed
 from django.core.exceptions import ObjectDoesNotExist
+from rest_framework import permissions
+
 class CustomTokenObtainPairView(TokenObtainPairView):
     serializer_class = CustomTokenObtainPairSerializer
 class LoginView(TokenObtainPairView):
@@ -72,6 +74,9 @@ class LogoutView(APIView):
             )
         
 class RegisterView(APIView):
+    authentication_classes = []
+    permission_classes = [permissions.AllowAny] 
+    
     def post(self, request):
         user_serializer = UserSerializer(data=request.data)
         if user_serializer.is_valid():
@@ -92,7 +97,7 @@ class RegisterView(APIView):
             # Generate verification token and send email
             token = default_token_generator.make_token(user)
             uid = urlsafe_base64_encode(force_bytes(user.pk))
-            verification_link = f'http://localhost:8000/api/verify-email/{uid}/{token}/'
+            verification_link = f'/http://localhost:5173/verify-email/{uid}/{token}/'
             
             subject = 'Verify Your Email'
             message = render_to_string('verify_email.html', {
@@ -117,8 +122,10 @@ class VerifyEmailView(APIView):
             user = User.objects.get(pk=uid)
             # Validate token
             if default_token_generator.check_token(user, token):
+                user.email_verified = True
                 user.is_active = True
                 user.save()
+                refresh = RefreshToken.for_user(user)
                 return Response({'message': 'Email verified successfully.'}, status=status.HTTP_200_OK)
             else:
                 return Response({'message': 'Invalid token.'}, status=status.HTTP_400_BAD_REQUEST)

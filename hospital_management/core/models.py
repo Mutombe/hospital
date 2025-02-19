@@ -10,6 +10,7 @@ class User(AbstractUser):
         ('ADMIN', 'Admin'),
     ]
     role = models.CharField(max_length=10, choices=ROLE_CHOICES, default='PATIENT')
+    email_verified = models.BooleanField(default=False)
     
     # Resolve conflicts by adding custom related_names
     groups = models.ManyToManyField(

@@ -48,7 +48,6 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
 
         return data
 
-
 class PatientSerializer(serializers.ModelSerializer):
     user = UserSerializer()
 
