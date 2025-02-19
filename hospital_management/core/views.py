@@ -97,7 +97,7 @@ class RegisterView(APIView):
             # Generate verification token and send email
             token = default_token_generator.make_token(user)
             uid = urlsafe_base64_encode(force_bytes(user.pk))
-            verification_link = f'/http://localhost:5173/verify-email/{uid}/{token}/'
+            verification_link = f'http://localhost:5173/verify-email/{uid}/{token}/'
             
             subject = 'Verify Your Email'
             message = render_to_string('verify_email.html', {
@@ -115,7 +115,7 @@ class RegisterView(APIView):
         return Response(user_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 class VerifyEmailView(APIView):
-    def get(self, request, uidb64, token):
+    def post(self, request, uidb64, token):
         try:
             # Decode uid
             uid = force_str(urlsafe_base64_decode(uidb64))
