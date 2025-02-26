@@ -114,7 +114,7 @@ class RegisterView(APIView):
             
         return Response(user_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-class VerifyEmailView(APIView):
+class VerifyEmailView1(APIView):
     def post(self, request, uidb64, token):
         try:
             # Decode uid
@@ -131,6 +131,38 @@ class VerifyEmailView(APIView):
                 return Response({'message': 'Invalid token.'}, status=status.HTTP_400_BAD_REQUEST)
         except (TypeError, ValueError, OverflowError, User.DoesNotExist):
             return Response({'message': 'Invalid user.'}, status=status.HTTP_400_BAD_REQUEST)
+
+class VerifyEmailView(APIView):
+    def post(self, request, uidb64, token):
+        try:
+            uid = force_str(urlsafe_base64_decode(uidb64))
+            user = User.objects.get(pk=uid)
+            
+            if default_token_generator.check_token(user, token):
+                user.email_verified = True
+                user.is_active = True
+                user.save()
+                
+                # Generate authentication tokens
+                refresh = RefreshToken.for_user(user)
+                
+                return Response({
+                    'access': str(refresh.access_token),
+                    'refresh': str(refresh),
+                    'user_id': user.id,
+                    'role': user.role
+                }, status=status.HTTP_200_OK)
+            
+            return Response(
+                {'error': 'Invalid token'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+            
+        except (TypeError, ValueError, OverflowError, User.DoesNotExist):
+            return Response(
+                {'error': 'Invalid verification link'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
 class PatientViewSet(viewsets.ModelViewSet):
     queryset = Patient.objects.all()
