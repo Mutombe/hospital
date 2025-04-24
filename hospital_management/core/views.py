@@ -1,6 +1,6 @@
 from rest_framework import viewsets, status
-from .models import Patient, Doctor, Appointment, MedicalRecord, User, Diagnosis, VitalSigns, Medication, Specialty
-from .serializers import PatientSerializer, DoctorSerializer, SpecialtySerializer, AppointmentSerializer, MedicalRecordSerializer, UserSerializer, CustomTokenObtainPairSerializer, MedicationSerializer, DiagnosisSerializer, VitalSignsSerializer
+from .models import Patient, Doctor, Appointment, MedicalRecord, User, Diagnosis, VitalSigns, Medication, Specialty, Profile
+from .serializers import PatientSerializer,ProfileSerializer, DoctorSerializer, SpecialtySerializer, AppointmentSerializer, MedicalRecordSerializer, UserSerializer, CustomTokenObtainPairSerializer, MedicationSerializer, DiagnosisSerializer, VitalSignsSerializer
 from django.template.loader import render_to_string
 from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
 from django.utils.encoding import force_bytes, force_str
@@ -20,6 +20,10 @@ from django.contrib.auth import authenticate
 from rest_framework.exceptions import AuthenticationFailed
 from django.core.exceptions import ObjectDoesNotExist
 from rest_framework import permissions
+from django.core.mail import EmailMultiAlternatives
+from django.template.loader import render_to_string
+from django.utils.html import strip_tags
+from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 
 class CustomTokenObtainPairView(TokenObtainPairView):
     serializer_class = CustomTokenObtainPairSerializer
@@ -99,13 +103,24 @@ class RegisterView(APIView):
             uid = urlsafe_base64_encode(force_bytes(user.pk))
             verification_link = f'http://localhost:5173/verify-email/{uid}/{token}/'
             
-            subject = 'Verify Your Email'
-            message = render_to_string('verify_email.html', {
-                'user': user,
-                'verification_link': verification_link,
-            })
-            send_mail(subject, message, 'noreply@hospital.com', [user.email])
-            
+            subject = "Verify Your Email"
+            html_message = render_to_string(
+            "verify_email.html",
+                {
+                    "user": user,
+                    "verification_link": verification_link,
+                },
+            )
+            plain_message = strip_tags(html_message)  
+            email = EmailMultiAlternatives(
+                subject, 
+                plain_message, 
+                "noreply@healthhub.com", 
+                [user.email]
+            )
+            email.attach_alternative(html_message, "text/html")
+            email.send()
+
             return Response({
                 'message': 'Registration successful. Please verify your email.',
                 'user_id': user.id,
@@ -242,6 +257,30 @@ class AppointmentViewSet(viewsets.ModelViewSet):
         appointment.status = 'CANCELLED'
         appointment.save()
         return Response({"status": "Appointment cancelled"})
+    
+class ProfileView(APIView):
+    permission_classes = [IsAuthenticated]
+    
+    def get(self, request):
+        user = request.user
+        profile, created = Profile.objects.get_or_create(user=user)
+        
+        serializer = ProfileSerializer(profile)
+        response_data = serializer.data
+        response_data['is_patient'] = hasattr(user, 'patient')
+        response_data['is_doctor'] = hasattr(user, 'doctor')
+        
+        return Response(response_data)
+    
+    def put(self, request):
+        user = request.user
+        profile = user.profile
+        
+        serializer = ProfileSerializer(profile, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 class SpecialtyViewSet(viewsets.ModelViewSet):
     queryset = Specialty.objects.all()

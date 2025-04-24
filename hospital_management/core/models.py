@@ -48,15 +48,11 @@ class Patient(models.Model):
         ('AB+', 'AB+'), ('AB-', 'AB-')
     ]
 
-    mrn = models.CharField(max_length=10, unique=True, null=True)  # Medical Record Number
+    mrn = models.CharField(max_length=10, unique=True, null=True)
     user = models.OneToOneField(User, on_delete=models.CASCADE)
     date_of_birth = models.DateField(default=timezone.now)
     gender = models.CharField(max_length=1, choices=GENDER_CHOICES, default="O")
     blood_type = models.CharField(max_length=3, choices=BLOOD_TYPES, default='0+')
-    address = models.TextField()
-    phone = models.CharField(max_length=15)
-    emergency_contact = models.CharField(max_length=100, default="None")
-    emergency_phone = models.CharField(max_length=15, default="None")
     created_at = models.DateTimeField(default=timezone.now)
     updated_at = models.DateTimeField(default=timezone.now)
 
@@ -133,8 +129,6 @@ class Specialty(models.Model):
 class Doctor(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='doctor')
     specialty = models.ForeignKey(Specialty, on_delete=models.SET_NULL, null=True)
-    license_number = models.CharField(max_length=50, unique=True, default="Private")
-    qualification = models.CharField(max_length=200, default="Private")
     experience_years = models.IntegerField(default=0)
     bio = models.TextField(blank=True, null=True)
     consultation_fee = models.DecimalField(max_digits=10, decimal_places=2, default=0.0)
@@ -234,3 +228,24 @@ class MedicalRecord(models.Model):
     prescription = models.TextField()
     notes = models.TextField(blank=True, null=True)
     date = models.DateField(auto_now_add=True)
+
+class Profile(models.Model):
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='profile')
+    # Common fields for all users
+    phone_number = models.CharField(max_length=20, blank=True)
+    address = models.TextField(blank=True)
+    city = models.CharField(max_length=100, blank=True)
+    country = models.CharField(max_length=100, blank=True)
+    profile_picture = models.ImageField(upload_to='profile_pics/', blank=True)
+    bio = models.TextField(blank=True)
+    
+    # Patient-specific proxy fields
+    emergency_contact = models.CharField(max_length=100, blank=True)
+    emergency_phone = models.CharField(max_length=15, blank=True)
+    
+    # Doctor-specific proxy fields
+    license_number = models.CharField(max_length=50, blank=True)
+    qualifications = models.TextField(blank=True)
+
+    def __str__(self):
+        return f"{self.user.username}'s Profile"

@@ -1,6 +1,6 @@
 # core/admin.py
 from django.contrib import admin
-from .models import User, Patient
+from .models import User, Patient, Profile
 
 class AdminUserOverview(admin.ModelAdmin):
     list_display = (
@@ -26,6 +26,18 @@ class AdminPatientOverview(admin.ModelAdmin):
         "blood_type",
     )
 
+class AdminProfileOverview(admin.ModelAdmin):
+    list_display = (
+        "user",
+        "phone_number",
+        "address",
+        "profile_picture"
+    )
+    search_fields = (
+        "phone_number",
+    )
+
 
 admin.site.register(User, AdminUserOverview)
+admin.site.register(Profile, AdminProfileOverview)
 admin.site.register(Patient, AdminPatientOverview)
