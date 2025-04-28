@@ -197,9 +197,13 @@ EMAIL_USE_SSL = False
 WSGI_APPLICATION = "hospital_management.wsgi.application"
 
 DATABASES = {
-    "default": {
-        "ENGINE": "django.db.backends.sqlite3",
-        "NAME": BASE_DIR / "db.sqlite3",
+    'default': {
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': 'bysd7fb7fvtqi2fnwuq3',
+        'USER': 'utht6hwxraxumeevlywv',
+        'PASSWORD': 'immXHq5JIDrUJGBsPzCJTzfbYfUigG',
+        'HOST': 'bysd7fb7fvtqi2fnwuq3-postgresql.services.clever-cloud.com',
+        'PORT': '50013',
     }
 }
 
