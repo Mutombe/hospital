@@ -36,10 +36,12 @@ INSTALLED_APPS = [
 
 CORS_ALLOWED_ORIGINS = [
     'http://localhost:5173',
+    'https://hospital-frontend-fagq.onrender.com',
     'http://127.0.0.1:5173'
 ]
 
 CORS_TRUSTED_ORIGINS = [
+    'https://hospital-frontend-fagq.onrender.com',
     'http://localhost:5173',
 ]
 
