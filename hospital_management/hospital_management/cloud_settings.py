@@ -3,6 +3,7 @@ from .settings import *
 from .settings import BASE_DIR
 
 # SECURITY SETTINGS
+
 ALLOWED_HOSTS = [
     os.environ.get('RENDER_EXTERNAL_HOSTNAME'),
     'hospital-pf5g.onrender.com',
