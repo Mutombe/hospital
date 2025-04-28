@@ -2,7 +2,7 @@
 # Exit on error
 set -o errexit
 
-cd backend
+cd hospital_management
 pip install -r requirements.txt
 
 # Convert static asset files
