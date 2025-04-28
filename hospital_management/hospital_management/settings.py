@@ -14,7 +14,13 @@ SECRET_KEY = "django-insecure-mkzwsj^%on9*=&f4(unazm-!3os834lt-e&=$%%d49rvvrzbpm
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
-ALLOWED_HOSTS = []
+
+ALLOWED_HOSTS = [
+    'hospital-pf5g.onrender.com',
+    'hospital-frontend-fagq.onrender.com',
+    'localhost',
+    '127.0.0.1'
+]
 
 # Application definition
 
