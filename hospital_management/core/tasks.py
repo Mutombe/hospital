@@ -31,7 +31,7 @@ def send_appointment_confirmation(appointment_id):
         'Appointment Confirmation',
         f'Your appointment with Dr. {appointment.doctor.user.get_full_name()} '
         f'has been confirmed for {appointment.appointment_date} at {appointment.appointment_time}.',
-        'from@example.com',
+        'support@healthcare.com',
         [appointment.patient.user.email],
         fail_silently=False,
     )

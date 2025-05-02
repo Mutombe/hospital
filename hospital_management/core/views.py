@@ -51,31 +51,6 @@ class LoginView(TokenObtainPairView):
                 {"detail": "An error occurred during login"}, 
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
-
-class LogoutView(APIView):
-    permission_classes = [IsAuthenticated]
-
-    def post(self, request):
-        try:
-            refresh_token = request.data.get("refresh")
-            if not refresh_token:
-                return Response(
-                    {"message": "Refresh token is required"}, 
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-                
-            token = RefreshToken(refresh_token)
-            token.blacklist()
-            
-            return Response(
-                {"message": "Successfully logged out."}, 
-                status=status.HTTP_200_OK
-            )
-        except Exception as e:
-            return Response(
-                {"message": str(e)}, 
-                status=status.HTTP_400_BAD_REQUEST
-            )
         
 class RegisterView(APIView):
     authentication_classes = []
