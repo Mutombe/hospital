@@ -7,11 +7,13 @@ from rest_framework.exceptions import AuthenticationFailed
 from django.core.exceptions import ObjectDoesNotExist
 from django.contrib.auth import authenticate
 from django.apps import apps
-
+from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 class UserSerializer(serializers.ModelSerializer):
+    profile_complete = serializers.BooleanField(read_only=True)  # Add this field
+    
     class Meta:
         model = User
-        fields = ['id', 'username', 'email', 'password', 'role']
+        fields = ['id', 'username', 'email', 'password', 'role', 'profile_complete']  # Add profile_complete
         extra_kwargs = {'password': {'write_only': True}}
 
     def create(self, validated_data):
@@ -21,29 +23,54 @@ class UserSerializer(serializers.ModelSerializer):
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
     def validate(self, attrs):
         try:
-            self.user = User.objects.get(username=attrs[self.username_field])
+            # Try to fetch user by username
+            self.user = User.objects.get(username=attrs.get(self.username_field))
             
-            if not self.user.check_password(attrs['password']):
-                raise AuthenticationFailed('Invalid credentials')
+            # Check password
+            if not self.user.check_password(attrs.get('password', '')):
+                raise AuthenticationFailed('Invalid username or password')
                 
+            # Check activation status
             if not self.user.is_active:
-                raise AuthenticationFailed("Account not activated")
+                raise AuthenticationFailed("Account not activated. Please check your email.")
                 
         except User.DoesNotExist:
-            raise AuthenticationFailed("Invalid credentials")
+            # Also check by email if username not found
+            try:
+                self.user = User.objects.get(email=attrs.get(self.username_field))
+                if not self.user.check_password(attrs.get('password', '')):
+                    raise AuthenticationFailed('Invalid email or password')
+            except User.DoesNotExist:
+                raise AuthenticationFailed("Invalid credentials")
         
+        # Continue with standard validation
         data = super().validate(attrs)
+        
+        # Get profile completion status safely
+        profile_complete = False
+        try:
+            profile_complete = self.user.profile_complete
+        except AttributeError:
+            # Handle case where profile_complete doesn't exist
+            pass
+        
+        # Add additional claims
         data.update({
             'role': self.user.role,
             'user_id': self.user.id,
+            'profile_complete': profile_complete,
+            'username': self.user.username,
+            'email': self.user.email,
         })
         
+        # Add profile IDs safely
         try:
             if self.user.role == 'PATIENT':
                 data['patient_id'] = self.user.patient.id
             elif self.user.role == 'DOCTOR':
                 data['doctor_id'] = self.user.doctor.id
         except ObjectDoesNotExist:
+            # Profiles might not exist yet
             pass
 
         return data
@@ -117,7 +144,7 @@ class AppointmentSerializer(serializers.ModelSerializer):
         
         return 
         
-class ProfileSerializer(serializers.ModelSerializer):
+class ProfileSerializerz(serializers.ModelSerializer):
     username = serializers.CharField(source='user.username')
     email = serializers.EmailField(source='user.email')
     role = serializers.CharField(source='user.role')
@@ -192,3 +219,15 @@ class ProfileSerializer(serializers.ModelSerializer):
 
         # Update Profile
         return super().update(instance, validated_data)
+
+class ProfileSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Profile
+        fields = [
+            'phone_number', 'address', 'city', 'country', 
+            'profile_picture', 'bio', 'emergency_contact', 
+            'emergency_phone', 'license_number', 'qualifications'
+        ]
+        extra_kwargs = {
+            'profile_picture': {'required': False}
+        }

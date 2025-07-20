@@ -23,32 +23,45 @@ from rest_framework import permissions
 from django.core.mail import EmailMultiAlternatives
 from django.template.loader import render_to_string
 from django.utils.html import strip_tags
-from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
+from rest_framework.views import APIView
+from rest_framework import status
 
 class CustomTokenObtainPairView(TokenObtainPairView):
     serializer_class = CustomTokenObtainPairSerializer
+
 class LoginView(TokenObtainPairView):
     serializer_class = CustomTokenObtainPairSerializer
 
     def post(self, request, *args, **kwargs):
         try:
             serializer = self.serializer_class(data=request.data)
-            if serializer.is_valid():
-                response_data = serializer.validated_data
-                return Response(response_data, status=status.HTTP_200_OK)
-            return Response(
-                serializer.errors, 
-                status=status.HTTP_401_UNAUTHORIZED
-            )
+            
+            # Explicitly validate credentials
+            if not serializer.is_valid():
+                # Extract specific error messages
+                errors = {}
+                if 'non_field_errors' in serializer.errors:
+                    errors['detail'] = serializer.errors['non_field_errors'][0]
+                else:
+                    for field, error_list in serializer.errors.items():
+                        errors[field] = error_list[0]
+                
+                return Response(
+                    {"errors": errors}, 
+                    status=status.HTTP_401_UNAUTHORIZED
+                )
+                
+            response_data = serializer.validated_data
+            return Response(response_data, status=status.HTTP_200_OK)
             
         except AuthenticationFailed as e:
             return Response(
-                {"detail": str(e)}, 
+                {"errors": {"detail": str(e)}}, 
                 status=status.HTTP_401_UNAUTHORIZED
             )
         except Exception as e:
             return Response(
-                {"detail": "An error occurred during login"}, 
+                {"errors": {"detail": "An unexpected error occurred"}}, 
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
         
@@ -95,32 +108,19 @@ class RegisterView(APIView):
             )
             email.attach_alternative(html_message, "text/html")
             email.send()
-
             return Response({
                 'message': 'Registration successful. Please verify your email.',
                 'user_id': user.id,
                 'role': user.role
             }, status=status.HTTP_201_CREATED)
+        errors = {}
+        for field, error_list in user_serializer.errors.items():
+            errors[field] = error_list[0] if isinstance(error_list, list) else error_list
             
-        return Response(user_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-class VerifyEmailView1(APIView):
-    def post(self, request, uidb64, token):
-        try:
-            # Decode uid
-            uid = force_str(urlsafe_base64_decode(uidb64))
-            user = User.objects.get(pk=uid)
-            # Validate token
-            if default_token_generator.check_token(user, token):
-                user.email_verified = True
-                user.is_active = True
-                user.save()
-                refresh = RefreshToken.for_user(user)
-                return Response({'message': 'Email verified successfully.'}, status=status.HTTP_200_OK)
-            else:
-                return Response({'message': 'Invalid token.'}, status=status.HTTP_400_BAD_REQUEST)
-        except (TypeError, ValueError, OverflowError, User.DoesNotExist):
-            return Response({'message': 'Invalid user.'}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            {"errors": errors}, 
+            status=status.HTTP_400_BAD_REQUEST
+        )
 
 class VerifyEmailView(APIView):
     def post(self, request, uidb64, token):
@@ -233,7 +233,7 @@ class AppointmentViewSet(viewsets.ModelViewSet):
         appointment.save()
         return Response({"status": "Appointment cancelled"})
     
-class ProfileView(APIView):
+class ProfileViewz(APIView):
     permission_classes = [IsAuthenticated]
     
     def get(self, request):
@@ -255,6 +255,86 @@ class ProfileView(APIView):
         if serializer.is_valid():
             serializer.save()
             return Response(serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+class ProfileView(APIView):
+    permission_classes = [IsAuthenticated]
+    
+    def get(self, request):
+        user = request.user
+        profile, created = Profile.objects.get_or_create(user=user)
+        
+        # Check if patient or doctor exists
+        is_patient = hasattr(user, 'patient')
+        is_doctor = hasattr(user, 'doctor')
+        
+        # Get patient/doctor data if exists
+        patient_data = {}
+        doctor_data = {}
+        
+        if is_patient:
+            patient = user.patient
+            patient_data = {
+                'date_of_birth': patient.date_of_birth,
+                'gender': patient.gender,
+                'blood_type': patient.blood_type
+            }
+        
+        if is_doctor:
+            doctor = user.doctor
+            doctor_data = {
+                'specialty': doctor.specialty.id if doctor.specialty else None,
+                'experience_years': doctor.experience_years,
+                'consultation_fee': doctor.consultation_fee
+            }
+        
+        serializer = ProfileSerializer(profile)
+        response_data = serializer.data
+        response_data.update({
+            'is_patient': is_patient,
+            'is_doctor': is_doctor,
+            'profile_complete': user.profile_complete,
+            'patient': patient_data,
+            'doctor': doctor_data
+        })
+        
+        return Response(response_data)
+    
+    def put(self, request):
+        user = request.user
+        profile = user.profile
+        
+        # Update patient data if exists
+        patient_data = request.data.get('patient', {})
+        if hasattr(user, 'patient'):
+            patient = user.patient
+            for field in ['date_of_birth', 'gender', 'blood_type']:
+                if field in patient_data:
+                    setattr(patient, field, patient_data[field])
+            patient.save()
+        
+        # Update doctor data if exists
+        doctor_data = request.data.get('doctor', {})
+        if hasattr(user, 'doctor'):
+            doctor = user.doctor
+            for field in ['specialty', 'experience_years', 'consultation_fee']:
+                if field in doctor_data:
+                    setattr(doctor, field, doctor_data[field])
+            doctor.save()
+        
+        # Update profile
+        serializer = ProfileSerializer(profile, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            
+            # Return updated data with completion status
+            response_data = serializer.data
+            response_data.update({
+                'is_patient': hasattr(user, 'patient'),
+                'is_doctor': hasattr(user, 'doctor'),
+                'profile_complete': user.profile_complete
+            })
+            return Response(response_data)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 class SpecialtyViewSet(viewsets.ModelViewSet):

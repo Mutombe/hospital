@@ -1,6 +1,6 @@
 # core/admin.py
 from django.contrib import admin
-from .models import User, Patient, Profile, Doctor, Diagnosis, Appointment, MedicalRecord
+from .models import User, Patient, PatientHistory, Profile, Doctor, Diagnosis, Appointment, MedicalRecord, Specialty, VitalSigns, Medication
 
 class AdminUserOverview(admin.ModelAdmin):
     list_display = (
@@ -49,6 +49,48 @@ class AdminMedicalRecordOverview(admin.ModelAdmin):
     )
     ordering = ("date",)
 
+class AdminPatientHistoryOverview(admin.ModelAdmin):
+    list_display = (
+        "patient",
+        "changed_by",
+        "change_date",
+        "field_name",
+    )
+    search_fields = (
+        "field_name",
+    )
+    ordering = ("change_date",)
+
+class AdminVitalSignsOverview(admin.ModelAdmin):
+    list_display = (
+        "patient",
+        "temperature",
+        "blood_pressure_systolic",
+        "heart_rate",
+        "recorded_at",
+        "recorded_by",
+        "respiratory_rate",
+    )
+    search_fields = (
+        "temperature",
+    )
+    ordering = ("recorded_at",)
+
+class AdminMedicationOverview(admin.ModelAdmin):
+    list_display = (
+        "patient",
+        "prescribed_by",
+        "name",
+        "dosage",
+        "frequency",
+        "start_date",
+        "end_date",
+    )
+    search_fields = (
+        "name",
+    )
+    ordering = ("name",)
+
 class AdminDiagnosisOverview(admin.ModelAdmin):
     list_display = (
         "patient",
@@ -64,6 +106,8 @@ class AdminDiagnosisOverview(admin.ModelAdmin):
 
 class AdminPatientOverview(admin.ModelAdmin):
     list_display = (
+        "user",
+        "gender",
         "mrn",
         "date_of_birth",
         "blood_type",
@@ -87,6 +131,14 @@ class AdminProfileOverview(admin.ModelAdmin):
         "phone_number",
     )
 
+class DoctorSpecialtyOverview(admin.ModelAdmin):
+    list_display = (
+        "name",
+    )
+    search_fields = (
+        "name",
+    )
+
 
 admin.site.register(User, AdminUserOverview)
 admin.site.register(Profile, AdminProfileOverview)
@@ -95,3 +147,7 @@ admin.site.register(Doctor, AdminDoctorOverview)
 admin.site.register(Appointment, AdminAppointmentOverview)
 admin.site.register(MedicalRecord, AdminMedicalRecordOverview)
 admin.site.register(Diagnosis, AdminDiagnosisOverview)
+admin.site.register(Specialty, DoctorSpecialtyOverview)
+admin.site.register(VitalSigns, AdminVitalSignsOverview)
+admin.site.register(Medication, AdminMedicationOverview)
+admin.site.register(PatientHistory, AdminPatientHistoryOverview)

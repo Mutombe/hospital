@@ -82,6 +82,7 @@ SESSION_COOKIE_SECURE = True
 
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',
+    'core.middleware.ProfileCompletionMiddleware',
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
@@ -155,25 +156,6 @@ CELERY_BEAT_SCHEDULE = {
     },
 }
 
-#LOGGING = {
- #   'version': 1,
-  #  'disable_existing_loggers': False,
-   # 'handlers': {
-   #     'file': {
-    #        'level': 'DEBUG',
-     #       'class': 'logging.FileHandler',
-      #      'filename': 'debug.log',
-       # },
-    #},
-    #'loggers': {
-     #   'django': {
-      #      'handlers': ['file'],
-       #     'level': 'DEBUG',
-        #    'propagate': True,
-        #},
-    #},
-#}
-
 ROOT_URLCONF = "hospital_management.urls"
 
 TEMPLATES = [
@@ -207,11 +189,16 @@ WSGI_APPLICATION = "hospital_management.wsgi.application"
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'bysd7fb7fvtqi2fnwuq3',
-        'USER': 'utht6hwxraxumeevlywv',
-        'PASSWORD': 'immXHq5JIDrUJGBsPzCJTzfbYfUigG',
-        'HOST': 'bysd7fb7fvtqi2fnwuq3-postgresql.services.clever-cloud.com',
-        'PORT': '50013',
+        'NAME': 'hospitalsystem_babybrush',
+        'USER': 'hospitalsystem_babybrush',
+        'PASSWORD': 'eae163c23457196625771ef51c789328f79be542',
+        'HOST': 'vfzjf3.h.filess.io',
+        'PORT': '5434',
+        'CONN_MAX_AGE': 0,
+        'OPTIONS': {
+            'options': '-c search_path=hospital_schema,public',
+            'connect_timeout': 5,
+        },
     }
 }
 
