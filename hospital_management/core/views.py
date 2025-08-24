@@ -1,5 +1,5 @@
 from rest_framework import viewsets, status
-from .models import Patient, Doctor, Appointment, MedicalRecord, User, Diagnosis, VitalSigns, Medication, Specialty, Profile
+from .models import Patient, Doctor, Appointment, MedicalRecord, User, Diagnosis, VitalSigns, Medication, Specialty, Profile, DoctorLeave, DoctorSchedule
 from .serializers import PatientSerializer,ProfileSerializer, DoctorSerializer, SpecialtySerializer, AppointmentSerializer, MedicalRecordSerializer, UserSerializer, CustomTokenObtainPairSerializer, MedicationSerializer, DiagnosisSerializer, VitalSignsSerializer
 from django.template.loader import render_to_string
 from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
@@ -9,7 +9,7 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from django.core.mail import send_mail
 from .serializers import UserSerializer
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.decorators import action
 from django_filters import rest_framework as filters
 from .tasks import send_appointment_confirmation
@@ -24,7 +24,13 @@ from django.core.mail import EmailMultiAlternatives
 from django.template.loader import render_to_string
 from django.utils.html import strip_tags
 from rest_framework.views import APIView
+import logging
 from rest_framework import status
+from .tasks import send_appointment_status_update, send_appointment_notification
+from datetime import datetime
+from django.utils import timezone
+
+logger = logging.getLogger(__name__)
 
 class CustomTokenObtainPairView(TokenObtainPairView):
     serializer_class = CustomTokenObtainPairSerializer
@@ -182,33 +188,31 @@ class DoctorViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['get'])
     def availability(self, request, pk=None):
         doctor = self.get_object()
-        date = request.query_params.get('date')
+        date_str = request.query_params.get('date')
         
         try:
-            date = datetime.strptime(date, '%Y-%m-%d').date()
+            date = datetime.strptime(date_str, '%Y-%m-%d').date()
         except (ValueError, TypeError):
             return Response(
                 {"error": "Invalid date format. Use YYYY-MM-DD"},
                 status=status.HTTP_400_BAD_REQUEST
             )
-            
-        schedule = doctor.doctorschedule_set.filter(
-            day_of_week=date.weekday(),
-            is_available=True
-        )
         
+        # For demo purposes, generate time slots from 9 AM to 5 PM
+        # without checking doctor's schedule or availability
         available_slots = []
-        for slot in schedule:
-            current_time = slot.start_time
-            while current_time < slot.end_time:
-                if doctor.is_available(date, current_time):
-                    available_slots.append(current_time.strftime('%H:%M'))
-                current_time = (
-                    datetime.combine(date, current_time) + 
-                    timedelta(minutes=30)
-                ).time()
+        current_time = datetime.strptime('09:00', '%H:%M').time()
+        end_time = datetime.strptime('17:00', '%H:%M').time()
         
-        return Response({"available_slots": available_slots})
+        while current_time < end_time:
+            available_slots.append(current_time.strftime('%H:%M'))
+            # Move to next slot (30 minutes)
+            current_time = (datetime.combine(date, current_time) + timedelta(minutes=30)).time()
+        
+        return Response({
+            "available_slots": available_slots,
+            "demo_note": "For demo purposes, all times from 9 AM to 5 PM are available"
+        })
 
 class AppointmentViewSet(viewsets.ModelViewSet):
     serializer_class = AppointmentSerializer
@@ -223,40 +227,76 @@ class AppointmentViewSet(viewsets.ModelViewSet):
         return Appointment.objects.all()
     
     def perform_create(self, serializer):
-        appointment = serializer.save()
+        # Set the patient to the current user's patient profile
+        patient = Patient.objects.get(user=self.request.user)
+        appointment = serializer.save(patient=patient)
+        
+        # Send confirmation email
         send_appointment_confirmation.delay(appointment.id)
+        
+        # Send notification to the doctor
+        send_appointment_notification.delay(appointment.id)
 
     @action(detail=True, methods=['post'])
-    def cancel(self, request, pk=None):
+    def accept(self, request, pk=None):
         appointment = self.get_object()
-        appointment.status = 'CANCELLED'
+        if request.user != appointment.doctor.user:
+            return Response(
+                {"error": "You can only accept your own appointments"},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        appointment.status = 'CONFIRMED'
         appointment.save()
-        return Response({"status": "Appointment cancelled"})
-    
-class ProfileViewz(APIView):
-    permission_classes = [IsAuthenticated]
-    
-    def get(self, request):
-        user = request.user
-        profile, created = Profile.objects.get_or_create(user=user)
         
-        serializer = ProfileSerializer(profile)
-        response_data = serializer.data
-        response_data['is_patient'] = hasattr(user, 'patient')
-        response_data['is_doctor'] = hasattr(user, 'doctor')
+        # Send confirmation to patient
+        send_appointment_status_update.delay(appointment.id, "accepted")
         
-        return Response(response_data)
-    
-    def put(self, request):
-        user = request.user
-        profile = user.profile
-        
-        serializer = ProfileSerializer(profile, data=request.data, partial=True)
-        if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        return Response({"status": "Appointment accepted"})
 
+    @action(detail=True, methods=['post'])
+    def reject(self, request, pk=None):
+        appointment = self.get_object()
+        if request.user != appointment.doctor.user:
+            return Response(
+                {"error": "You can only reject your own appointments"},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        note = request.data.get('note', '')
+        appointment.status = 'CANCELLED'
+        appointment.notes = f"Rejected by doctor: {note}"
+        appointment.save()
+        
+        # Send notification to patient
+        send_appointment_status_update.delay(appointment.id, "rejected", note)
+        
+        return Response({"status": "Appointment rejected"})
+
+    @action(detail=False, methods=['get'])
+    def upcoming(self, request):
+        user = request.user
+        tomorrow = timezone.now().date() + timedelta(days=1)
+        
+        if user.role == 'DOCTOR':
+            appointments = Appointment.objects.filter(
+                doctor__user=user,
+                appointment_date__gte=tomorrow,
+                status__in=['PENDING', 'CONFIRMED']
+            )
+        elif user.role == 'PATIENT':
+            appointments = Appointment.objects.filter(
+                patient__user=user,
+                appointment_date__gte=tomorrow,
+                status__in=['PENDING', 'CONFIRMED']
+            )
+        else:
+            appointments = Appointment.objects.none()
+            
+        serializer = self.get_serializer(appointments, many=True)
+        return Response(serializer.data)
+
+        
 class ProfileView(APIView):
     permission_classes = [IsAuthenticated]
     

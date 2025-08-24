@@ -99,13 +99,6 @@ class Profile(models.Model):
     profile_picture = models.ImageField(upload_to='profile_pics/', blank=True, null=True)
     bio = models.TextField(blank=True)
 
-    # Fields to track profile completion
-    # We will derive this based on other fields being filled
-    # For simplicity, we can just use the existence of key fields
-    # Example: For a patient, if phone_number, address, and emergency_contact are filled.
-    # For a doctor, if phone_number, address, license_number, and qualifications are filled.
-    # We will calculate this on the fly or through a method.
-
     # Patient-specific proxy fields
     date_of_birth = models.DateField(blank=True, null=True)
     gender = models.CharField(max_length=10, blank=True)
@@ -387,9 +380,8 @@ class Appointment(models.Model):
         ordering = ['appointment_date', 'appointment_time']
         
     def save(self, *args, **kwargs):
-        if not self.pk:  # New appointment
-            if not self.doctor.is_available(self.appointment_date, self.appointment_time):
-                raise ValueError("Doctor is not available at this time")
+        # Update the updated_at field on each save
+        self.updated_at = timezone.now()
         super().save(*args, **kwargs)
 
     def __str__(self):

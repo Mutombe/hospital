@@ -120,6 +120,7 @@ class DoctorLeaveSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 class DoctorSerializer(serializers.ModelSerializer):
+    user = UserSerializer()
     schedule = DoctorScheduleSerializer(many=True, read_only=True)
     specialty = SpecialtySerializer(read_only=True)
     

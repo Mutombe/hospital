@@ -181,6 +181,7 @@ EMAIL_PORT = 587
 EMAIL_HOST_USER = 'simbamtombe@gmail.com'  # Your Gmail address
 EMAIL_HOST_PASSWORD = 'itzh jjkc hdmv csih'
 DEFAULT_FROM_EMAIL = 'noreply@hospital.com'
+
 EMAIL_USE_TLS = True
 EMAIL_USE_SSL = False
 
