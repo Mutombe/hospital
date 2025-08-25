@@ -8,6 +8,7 @@ from django.core.exceptions import ObjectDoesNotExist
 from django.contrib.auth import authenticate
 from django.apps import apps
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
+from django.utils import timezone
 class UserSerializer(serializers.ModelSerializer):
     profile_complete = serializers.BooleanField(read_only=True)  # Add this field
     
@@ -130,96 +131,48 @@ class DoctorSerializer(serializers.ModelSerializer):
         read_only_fields = ('user',)
 
 class AppointmentSerializer(serializers.ModelSerializer):
+    
+    doctor = DoctorSerializer(read_only=True)
+    patient = PatientSerializer(read_only=True)
+    
     class Meta:
         model = Appointment
         fields = '__all__'
-        read_only_fields = ('status', 'created_at', 'updated_at')
+        read_only_fields = ('patient', 'status', 'created_at', 'updated_at')
 
     def validate(self, data):
-        doctor = data['doctor']
-        appointment_date = data['appointment_date']
-        appointment_time = data['appointment_time']
+        # Only validate appointment_date if it's being updated
+        appointment_date = data.get('appointment_date')
         
-        if not doctor.is_available(appointment_date, appointment_time):
-            raise serializers.ValidationError("Doctor is not available at this time")
+        # If this is a partial update and appointment_date is not provided, skip date validation
+        if self.partial and appointment_date is None:
+            return data
+            
+        # If appointment_date is provided, validate it
+        if appointment_date is not None and appointment_date < timezone.now().date():
+            raise serializers.ValidationError("Appointment date cannot be in the past")
         
-        return 
+        return data
+
+    def create(self, validated_data):
+        request = self.context.get('request')
         
-class ProfileSerializerz(serializers.ModelSerializer):
-    username = serializers.CharField(source='user.username')
-    email = serializers.EmailField(source='user.email')
-    role = serializers.CharField(source='user.role')
-    
-    # Patient-specific fields (accessed through user)
-    mrn = serializers.CharField(source='user.patient.mrn', read_only=True, allow_null=True)
-    date_of_birth = serializers.DateField(source='user.patient.date_of_birth', allow_null=True)
-    gender = serializers.CharField(source='user.patient.gender', allow_null=True)
-    blood_type = serializers.CharField(source='user.patient.blood_type', allow_null=True)
-    
-    # Doctor-specific fields (accessed through user)
-    specialty = serializers.PrimaryKeyRelatedField(
-        source='user.doctor.specialty', 
-        queryset=Specialty.objects.all(),
-        allow_null=True
-    )
-    experience_years = serializers.IntegerField(
-        source='user.doctor.experience_years',
-        allow_null=True
-    )
-    consultation_fee = serializers.DecimalField(
-        source='user.doctor.consultation_fee',
-        max_digits=10,
-        decimal_places=2,
-        allow_null=True
-    )
-
-    class Meta:
-        model = Profile
-        fields = [
-            'username', 'email', 'role', 'phone_number', 'address', 'city',
-            'country', 'profile_picture', 'bio', 'emergency_contact',
-            'emergency_phone', 'license_number', 'qualifications',
-            'mrn', 'date_of_birth', 'gender', 'blood_type',
-            'specialty', 'experience_years', 'consultation_fee'
-        ]
-        extra_kwargs = {
-            'mrn': {'required': False},
-            'date_of_birth': {'required': False},
-            'gender': {'required': False},
-            'blood_type': {'required': False},
-            'specialty': {'required': False},
-            'experience_years': {'required': False},
-            'consultation_fee': {'required': False}
-        }
-
-    def update(self, instance, validated_data):
-        # Extract nested data
-        user_data = validated_data.pop('user', {})
-        patient_data = user_data.pop('patient', {}) if 'user' in validated_data else {}
-        doctor_data = user_data.pop('doctor', {}) if 'user' in validated_data else {}
-
-        # Update User
-        user = instance.user
-        user.username = user_data.get('username', user.username)
-        user.email = user_data.get('email', user.email)
-        user.save()
-
-        # Update Patient if exists
-        if hasattr(user, 'patient'):
-            patient = user.patient
-            for attr, value in patient_data.items():
-                setattr(patient, attr, value)
-            patient.save()
-
-        # Update Doctor if exists
-        if hasattr(user, 'doctor'):
-            doctor = user.doctor
-            for attr, value in doctor_data.items():
-                setattr(doctor, attr, value)
-            doctor.save()
-
-        # Update Profile
-        return super().update(instance, validated_data)
+        # Check if user is authenticated
+        if not request or not request.user.is_authenticated:
+            raise serializers.ValidationError("User must be authenticated to book an appointment")
+        
+        # Get the patient associated with the user
+        try:
+            patient = Patient.objects.get(user=request.user)
+        except Patient.DoesNotExist:
+            raise serializers.ValidationError("Patient profile not found. Please complete your profile first.")
+        
+        # Set the patient for the appointment
+        validated_data['patient'] = patient
+        
+        # Create and return the appointment
+        return super().create(validated_data)
+        
 
 class ProfileSerializer(serializers.ModelSerializer):
     class Meta:

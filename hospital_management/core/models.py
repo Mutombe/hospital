@@ -363,7 +363,6 @@ class Appointment(models.Model):
         ('CONFIRMED', 'Confirmed'),
         ('COMPLETED', 'Completed'),
         ('CANCELLED', 'Cancelled'),
-        ('NO_SHOW', 'No Show')
     ]
     
     patient = models.ForeignKey(Patient, on_delete=models.CASCADE, related_name='appointments')
@@ -382,6 +381,15 @@ class Appointment(models.Model):
     def save(self, *args, **kwargs):
         # Update the updated_at field on each save
         self.updated_at = timezone.now()
+        
+        # Ensure patient is set before saving
+        if not self.patient_id and hasattr(self, '_request_user'):
+            try:
+                patient = Patient.objects.get(user=self._request_user)
+                self.patient = patient
+            except Patient.DoesNotExist:
+                raise ValueError("Patient profile not found for current user")
+                
         super().save(*args, **kwargs)
 
     def __str__(self):

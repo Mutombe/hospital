@@ -183,7 +183,7 @@ class PatientViewSet(viewsets.ModelViewSet):
 class DoctorViewSet(viewsets.ModelViewSet):
     queryset = Doctor.objects.all()
     serializer_class = DoctorSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
     
     @action(detail=True, methods=['get'])
     def availability(self, request, pk=None):
@@ -220,81 +220,105 @@ class AppointmentViewSet(viewsets.ModelViewSet):
     
     def get_queryset(self):
         user = self.request.user
-        if user.role == 'DOCTOR':
-            return Appointment.objects.filter(doctor__user=user)
-        elif user.role == 'PATIENT':
-            return Appointment.objects.filter(patient__user=user)
-        return Appointment.objects.all()
+        print(f"User: {user}, Has doctor: {hasattr(user, 'doctor')}, Has patient: {hasattr(user, 'patient')}")
     
+        if hasattr(user, 'doctor'):
+            queryset = Appointment.objects.filter(doctor__user=user)
+            print(f"Doctor appointments: {queryset.count()}")
+            return queryset
+        elif hasattr(user, 'patient'):
+            queryset = Appointment.objects.filter(patient__user=user)
+            print(f"Patient appointments: {queryset.count()}")
+            return queryset
+    
+        print("No doctor or patient profile found")
+        return Appointment.objects.none()
+    def create(self, request, *args, **kwargs):
+        try:
+            # Create serializer with request context
+            serializer = self.get_serializer(data=request.data, context={'request': request})
+            serializer.is_valid(raise_exception=True)
+            
+            # Perform creation
+            self.perform_create(serializer)
+            
+            # Send confirmation email
+            send_appointment_confirmation.delay(serializer.instance.id)
+            
+            # Send notification to the doctor
+            send_appointment_notification.delay(serializer.instance.id)
+            
+            headers = self.get_success_headers(serializer.data)
+            return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+            
+        except Exception as e:
+            # Log the error for debugging
+            import traceback
+            print(f"Error creating appointment: {str(e)}")
+            print(traceback.format_exc())
+            
+            return Response(
+                {"error": "Failed to create appointment. Please try again."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
     def perform_create(self, serializer):
-        # Set the patient to the current user's patient profile
-        patient = Patient.objects.get(user=self.request.user)
-        appointment = serializer.save(patient=patient)
-        
-        # Send confirmation email
-        send_appointment_confirmation.delay(appointment.id)
-        
-        # Send notification to the doctor
-        send_appointment_notification.delay(appointment.id)
+        # This will be handled by the serializer's create method
+        serializer.save()
 
     @action(detail=True, methods=['post'])
     def accept(self, request, pk=None):
-        appointment = self.get_object()
-        if request.user != appointment.doctor.user:
+        try:
+            appointment = self.get_object()
+            
+            # Check if the current user is the doctor for this appointment
+            if not hasattr(request.user, 'doctor') or appointment.doctor.user != request.user:
+                return Response(
+                    {"error": "You can only accept your own appointments"},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+            
+            appointment.status = 'CONFIRMED'
+            appointment.save()
+            
+            # Send confirmation to patient
+            send_appointment_status_update.delay(appointment.id, "accepted")
+            
+            return Response({"status": "Appointment accepted"})
+            
+        except Appointment.DoesNotExist:
             return Response(
-                {"error": "You can only accept your own appointments"},
-                status=status.HTTP_403_FORBIDDEN
+                {"error": "Appointment not found"},
+                status=status.HTTP_404_NOT_FOUND
             )
-        
-        appointment.status = 'CONFIRMED'
-        appointment.save()
-        
-        # Send confirmation to patient
-        send_appointment_status_update.delay(appointment.id, "accepted")
-        
-        return Response({"status": "Appointment accepted"})
 
     @action(detail=True, methods=['post'])
     def reject(self, request, pk=None):
-        appointment = self.get_object()
-        if request.user != appointment.doctor.user:
-            return Response(
-                {"error": "You can only reject your own appointments"},
-                status=status.HTTP_403_FORBIDDEN
-            )
-        
-        note = request.data.get('note', '')
-        appointment.status = 'CANCELLED'
-        appointment.notes = f"Rejected by doctor: {note}"
-        appointment.save()
-        
-        # Send notification to patient
-        send_appointment_status_update.delay(appointment.id, "rejected", note)
-        
-        return Response({"status": "Appointment rejected"})
-
-    @action(detail=False, methods=['get'])
-    def upcoming(self, request):
-        user = request.user
-        tomorrow = timezone.now().date() + timedelta(days=1)
-        
-        if user.role == 'DOCTOR':
-            appointments = Appointment.objects.filter(
-                doctor__user=user,
-                appointment_date__gte=tomorrow,
-                status__in=['PENDING', 'CONFIRMED']
-            )
-        elif user.role == 'PATIENT':
-            appointments = Appointment.objects.filter(
-                patient__user=user,
-                appointment_date__gte=tomorrow,
-                status__in=['PENDING', 'CONFIRMED']
-            )
-        else:
-            appointments = Appointment.objects.none()
+        try:
+            appointment = self.get_object()
             
-        serializer = self.get_serializer(appointments, many=True)
-        return Response(serializer.data)
+            # Check if the current user is the doctor for this appointment
+            if not hasattr(request.user, 'doctor') or appointment.doctor.user != request.user:
+                return Response(
+                    {"error": "You can only reject your own appointments"},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+            
+            note = request.data.get('note', '')
+            appointment.status = 'CANCELLED'
+            appointment.notes = f"Rejected by doctor: {note}"
+            appointment.save()
+            
+            # Send notification to patient
+            send_appointment_status_update.delay(appointment.id, "rejected", note)
+            
+            return Response({"status": "Appointment rejected"})
+            
+        except Appointment.DoesNotExist:
+            return Response(
+                {"error": "Appointment not found"},
+                status=status.HTTP_404_NOT_FOUND
+            )
 
         
 class ProfileView(APIView):
